@@ -1,6 +1,6 @@
 [project]
 name = "cats-scheduler-bot"
-version = "0.1.0"
+version = "0.1.1"
 description = "Telegram scheduled message bot with a Chinese web dashboard"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,7 +12,6 @@ dependencies = [
   "pydantic-settings>=2.10,<3",
   "python-dateutil>=2.9,<3",
   "python-multipart>=0.0.20,<1",
-  "redis>=6,<7",
   "sqlalchemy[asyncio]>=2.0.40,<3",
   "uvicorn[standard]>=0.35,<1",
 ]

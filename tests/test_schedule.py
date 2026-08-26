@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from app.models import ScheduledTask
-from app.schedule import local_to_utc, next_occurrence
+from app.schedule import local_to_utc, next_future_occurrence, next_occurrence
 
 
 def task(kind: str, start: datetime, config: dict | None = None) -> ScheduledTask:
@@ -40,8 +40,10 @@ def test_interval_minutes() -> None:
 
 def test_monthly_clamps_last_day() -> None:
     start = datetime(2027, 1, 31, 12, 0, tzinfo=UTC)
-    result = next_occurrence(task("monthly", start))
-    assert result == datetime(2027, 2, 28, 12, 0, tzinfo=UTC)
+    item = task("monthly", start, {"day_of_month": 31})
+    february = next_occurrence(item)
+    assert february == datetime(2027, 2, 28, 12, 0, tzinfo=UTC)
+    assert next_occurrence(item, february) == datetime(2027, 3, 31, 12, 0, tzinfo=UTC)
 
 
 def test_end_date_stops_recurrence() -> None:
@@ -49,3 +51,16 @@ def test_end_date_stops_recurrence() -> None:
     item = task("daily", start)
     item.end_at = datetime(2026, 8, 26, 20, 0, tzinfo=UTC)
     assert next_occurrence(item) is None
+
+
+def test_missed_daily_runs_are_coalesced() -> None:
+    start = datetime(2026, 8, 1, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 8, 26, 0, 0, tzinfo=UTC)
+    item = task("daily", start)
+    assert next_future_occurrence(item, start, now) == datetime(2026, 8, 27, 0, 0, tzinfo=UTC)
+
+
+def test_missed_once_task_has_no_second_run() -> None:
+    start = datetime(2026, 8, 1, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 8, 26, 0, 0, tzinfo=UTC)
+    assert next_future_occurrence(task("once", start), start, now) is None

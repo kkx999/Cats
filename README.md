@@ -13,18 +13,20 @@
 - 开始时间、结束时间、自动置顶、发送后自动删除
 - 任务创建、编辑、暂停、启用、复制、删除、手动试发
 - 数据库持久调度、任务抢占锁、失败退避重试、重启恢复
+- 停机期间错过的多个周期合并为一次，不会恢复后连续刷屏
+- 按 Telegram 群组和全局频率限制排队，并遵循 `retry_after`
 - 图片和视频发布到公开 Telegram 素材频道
 - 同时保存 `file_id`、频道消息 ID 和公开消息链接
 - 用户额度与超级管理员后台，支持 10/20/50/100/无限制
 - 超级管理员可配置问题反馈账号并群发公告
 - 中文响应式后台，桌面和手机均可使用
+- 每次敏感操作重新核对 Telegram 群管理员权限
 
 ## 架构
 
 - Web/API：FastAPI
 - Telegram：aiogram 3（长轮询，不要求 Telegram webhook）
 - 数据库：PostgreSQL 16
-- Redis：为后续多实例限流和队列扩展预留
 - HTTPS：Caddy 自动申请和续期证书
 - 部署：Docker Compose
 
@@ -42,17 +44,16 @@
 
 ## 首次部署
 
+在全新 Debian 12 上使用仓库自带安装脚本。脚本会配置 Docker 官方软件源、安装 Docker Compose Plugin、在服务器本地生成随机密钥并启动服务：
+
 ```bash
-apt update && apt install -y git docker.io docker-compose-plugin
-systemctl enable --now docker
+apt update && apt install -y git
 git clone https://github.com/kkx999/Cats.git /opt/miaobot
 cd /opt/miaobot
-cp .env.example .env
-nano .env
-docker compose up -d --build
+bash deploy/install.sh
 ```
 
-如果系统仓库没有 `docker-compose-plugin`，可按照 Docker 官方 Debian 文档安装 Compose Plugin 后再继续。
+安装过程会在 SSH 终端中询问域名、Bot Token、管理员 ID 和公开素材频道；Bot Token 输入时不会显示。脚本不会修改 SSH 登录方式。
 
 `.env` 中必须填写：
 

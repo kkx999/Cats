@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const buttonsInput = document.querySelector('#buttons-json');
 
   const updatePreview = () => {
+    const contentLimit = mediaSelect.value ? 1024 : 4096;
+    textInput.maxLength = contentLimit;
+    document.querySelector('#text-limit').textContent = `最多 ${contentLimit} 字符`;
     previewText.textContent = textInput.value || '消息内容会显示在这里';
     previewMedia.hidden = !mediaSelect.value;
     const rows = readButtons();

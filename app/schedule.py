@@ -44,13 +44,36 @@ def next_occurrence(task: ScheduledTask, after: datetime | None = None) -> datet
         else:
             year = local.year + (1 if local.month == 12 else 0)
             month = 1 if local.month == 12 else local.month + 1
-            day = min(local.day, monthrange(year, month)[1])
+            configured_day = int(
+                config.get("day_of_month", ensure_utc(task.start_at).astimezone(zone).day)
+            )
+            day = min(configured_day, monthrange(year, month)[1])
             candidate_local = local.replace(year=year, month=month, day=day)
         candidate = candidate_local.astimezone(UTC)
 
     if task.end_at and candidate > ensure_utc(task.end_at):
         return None
     return candidate
+
+
+def next_future_occurrence(
+    task: ScheduledTask,
+    scheduled_for: datetime,
+    now: datetime | None = None,
+) -> datetime | None:
+    """Return the first future run while coalescing all missed occurrences.
+
+    A task that was offline for a month is sent once when the worker recovers,
+    then advances directly to its next future slot instead of flooding the chat.
+    """
+
+    now = ensure_utc(now or datetime.now(UTC))
+    candidate = next_occurrence(task, scheduled_for)
+    for _ in range(100_000):
+        if candidate is None or candidate > now:
+            return candidate
+        candidate = next_occurrence(task, candidate)
+    raise RuntimeError("无法在合理范围内计算下一次发送时间")
 
 
 def describe_schedule(task: ScheduledTask) -> str:

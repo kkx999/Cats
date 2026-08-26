@@ -6,6 +6,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot
+from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 from fastapi import (
     BackgroundTasks,
@@ -61,6 +63,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="喵Bot", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+media_upload_semaphore = asyncio.Semaphore(4)
 
 
 def render(request: Request, name: str, **context: object) -> HTMLResponse:
@@ -101,6 +104,28 @@ async def owned_task(session: AsyncSession, task_id: str, user_id: int) -> Sched
     if not task:
         raise HTTPException(404, "任务不存在")
     return task
+
+
+async def verify_chat_admin(
+    request: Request,
+    session: AsyncSession,
+    user_id: int,
+    chat_id: int,
+) -> None:
+    bot: Bot | None = request.app.state.bot
+    if not bot:
+        raise HTTPException(503, "机器人尚未配置")
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+    except TelegramAPIError as exc:
+        raise HTTPException(502, "暂时无法向 Telegram 核对群管理权限") from exc
+    if member.status in {ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR}:
+        return
+    await session.execute(
+        delete(UserChat).where(UserChat.user_id == user_id, UserChat.chat_id == chat_id)
+    )
+    await session.commit()
+    raise HTTPException(403, "你的群管理员权限已经失效，请重新绑定")
 
 
 @app.get("/health")
@@ -225,6 +250,7 @@ async def edit_task(
 ) -> HTMLResponse:
     user = await require_user(request, session)
     task = await owned_task(session, task_id, user.id)
+    await verify_chat_admin(request, session, user.id, task.chat_id)
     chats = await owned_chats(session, user.id)
     media = list(
         (
@@ -260,8 +286,12 @@ def parse_buttons(raw: str) -> list:
             raise HTTPException(422, "每行最多 4 个按钮")
         clean_row = []
         for item in row:
+            if not isinstance(item, dict):
+                raise HTTPException(422, "按钮格式错误")
             text = str(item.get("text", "")).strip()[:64]
             url = str(item.get("url", "")).strip()
+            if len(url) > 2048:
+                raise HTTPException(422, "按钮链接过长")
             if text and url.startswith(("https://", "http://", "tg://")):
                 clean_row.append({"text": text, "url": url})
         if clean_row:
@@ -270,6 +300,7 @@ def parse_buttons(raw: str) -> list:
 
 
 async def save_task_from_form(
+    request: Request,
     session: AsyncSession,
     user: User,
     task: ScheduledTask | None,
@@ -285,9 +316,11 @@ async def save_task_from_form(
     timezone: str,
     interval: int,
     interval_unit: str,
+    parse_mode: str,
     pin_message: bool,
     auto_delete_seconds: int | None,
 ) -> ScheduledTask:
+    await verify_chat_admin(request, session, user.id, chat_id)
     relation = await session.scalar(
         select(UserChat).where(UserChat.user_id == user.id, UserChat.chat_id == chat_id)
     )
@@ -305,8 +338,21 @@ async def save_task_from_form(
         raise HTTPException(422, "结束时间不能早于开始时间")
     if schedule_kind not in {"once", "daily", "weekly", "monthly", "interval"}:
         raise HTTPException(422, "不支持的发送周期")
+    if parse_mode not in {"plain", "html"}:
+        raise HTTPException(422, "不支持的文字格式")
+    if not 1 <= interval <= 999:
+        raise HTTPException(422, "自定义间隔必须在 1 到 999 之间")
+    if auto_delete_seconds is not None and not 60 <= auto_delete_seconds <= 604800:
+        raise HTTPException(422, "自动删除时间必须在 1 分钟到 7 天之间")
+    content_limit = 1024 if media_id else 4096
+    if len(text) > content_limit:
+        label = "媒体说明" if media_id else "消息文字"
+        raise HTTPException(422, f"{label}不能超过 {content_limit} 个字符")
+    if end_utc and end_utc < datetime.now(UTC):
+        raise HTTPException(422, "结束时间已经过去")
 
     if task is None:
+        await session.execute(select(User.id).where(User.id == user.id).with_for_update())
         active_count = await session.scalar(
             select(func.count())
             .select_from(ScheduledTask)
@@ -333,6 +379,8 @@ async def save_task_from_form(
     task.schedule_config = {
         "interval": max(1, interval),
         "unit": interval_unit if interval_unit in {"minutes", "hours", "days"} else "hours",
+        "parse_mode": parse_mode,
+        "day_of_month": start_utc.astimezone(ZoneInfo(timezone)).day,
     }
     task.timezone = timezone
     task.start_at = start_utc
@@ -362,12 +410,14 @@ async def create_task(
     timezone: str = Form("Asia/Shanghai"),
     interval: int = Form(1),
     interval_unit: str = Form("hours"),
+    parse_mode: str = Form("plain"),
     pin_message: bool = Form(False),
     auto_delete_seconds: int | None = Form(None),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
     user = await require_user(request, session)
     await save_task_from_form(
+        request,
         session,
         user,
         None,
@@ -382,6 +432,7 @@ async def create_task(
         timezone=timezone,
         interval=interval,
         interval_unit=interval_unit,
+        parse_mode=parse_mode,
         pin_message=pin_message,
         auto_delete_seconds=auto_delete_seconds,
     )
@@ -403,6 +454,7 @@ async def update_task(
     timezone: str = Form("Asia/Shanghai"),
     interval: int = Form(1),
     interval_unit: str = Form("hours"),
+    parse_mode: str = Form("plain"),
     pin_message: bool = Form(False),
     auto_delete_seconds: int | None = Form(None),
     session: AsyncSession = Depends(get_session),
@@ -410,6 +462,7 @@ async def update_task(
     user = await require_user(request, session)
     task = await owned_task(session, task_id, user.id)
     await save_task_from_form(
+        request,
         session,
         user,
         task,
@@ -424,6 +477,7 @@ async def update_task(
         timezone=timezone,
         interval=interval,
         interval_unit=interval_unit,
+        parse_mode=parse_mode,
         pin_message=pin_message,
         auto_delete_seconds=auto_delete_seconds,
     )
@@ -436,7 +490,9 @@ async def toggle_task(
 ) -> RedirectResponse:
     user = await require_user(request, session)
     task = await owned_task(session, task_id, user.id)
+    await verify_chat_admin(request, session, user.id, task.chat_id)
     if not task.active:
+        await session.execute(select(User.id).where(User.id == user.id).with_for_update())
         limit = await effective_limit(session, user.id)
         count = await session.scalar(
             select(func.count())
@@ -469,6 +525,8 @@ async def copy_task(
 ) -> RedirectResponse:
     user = await require_user(request, session)
     source = await owned_task(session, task_id, user.id)
+    await verify_chat_admin(request, session, user.id, source.chat_id)
+    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
     limit = await effective_limit(session, user.id)
     count = await session.scalar(
         select(func.count())
@@ -504,11 +562,14 @@ async def test_task(
 ) -> RedirectResponse:
     user = await require_user(request, session)
     task = await owned_task(session, task_id, user.id)
+    await verify_chat_admin(request, session, user.id, task.chat_id)
     bot: Bot | None = request.app.state.bot
     if not bot:
         raise HTTPException(503, "机器人尚未配置")
     try:
-        await send_task(bot, task)
+        send_result = await send_task(bot, task)
+        task.last_error = send_result.warning
+        await session.commit()
         result = "test_ok=1"
     except Exception as exc:
         task.last_error = str(exc)[:1000]
@@ -537,19 +598,25 @@ async def upload_media(
     )
     if not media_type:
         raise HTTPException(415, "目前只支持图片和视频")
-    data = await file.read(50 * 1024 * 1024 + 1)
-    if len(data) > 50 * 1024 * 1024:
-        raise HTTPException(413, "素材不能超过 50MB")
-    upload = BufferedInputFile(data, filename=file.filename or f"media.{media_type}")
-    caption = f"🐾 喵Bot 素材 · 用户 {user.id}"
-    if media_type == "photo":
-        message = await bot.send_photo(settings.material_channel_id, upload, caption=caption)
-        telegram_file = message.photo[-1]
-    else:
-        message = await bot.send_video(
-            settings.material_channel_id, upload, caption=caption, supports_streaming=True
-        )
-        telegram_file = message.video
+    async with media_upload_semaphore:
+        data = await file.read(50 * 1024 * 1024 + 1)
+        if len(data) > 50 * 1024 * 1024:
+            raise HTTPException(413, "素材不能超过 50MB")
+        upload = BufferedInputFile(data, filename=file.filename or f"media.{media_type}")
+        caption = "🐾 喵Bot 公开素材"
+        try:
+            if media_type == "photo":
+                message = await bot.send_photo(
+                    settings.material_channel_id, upload, caption=caption
+                )
+                telegram_file = message.photo[-1]
+            else:
+                message = await bot.send_video(
+                    settings.material_channel_id, upload, caption=caption, supports_streaming=True
+                )
+                telegram_file = message.video
+        except TelegramAPIError as exc:
+            raise HTTPException(502, f"素材上传到 Telegram 失败：{exc}") from exc
     public_url = None
     if settings.material_channel_username:
         public_url = (
@@ -687,7 +754,7 @@ async def broadcast_announcement(text: str) -> None:
             )
         for user_id in user_ids:
             try:
-                await bot.send_message(user_id, f"<b>喵Bot 公告</b>\n\n{text}", parse_mode="HTML")
+                await bot.send_message(user_id, f"🐾 喵Bot 公告\n\n{text}")
             except Exception:
                 pass
             await asyncio.sleep(0.04)
@@ -707,6 +774,8 @@ async def announcement(
         raise HTTPException(403, "无权访问")
     if not text.strip():
         raise HTTPException(422, "公告不能为空")
+    if len(text) > 4000:
+        raise HTTPException(422, "公告不能超过 4000 个字符")
     session.add(
         AuditLog(actor_id=actor.id, action="announcement.send", detail={"text": text[:500]})
     )

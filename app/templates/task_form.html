@@ -12,7 +12,8 @@
         <div class="panel-title"><span class="step-number">1</span><div><h2>发送内容</h2><p>组合文字、媒体和链接按钮</p></div></div>
         <label class="field"><span>任务名称</span><input name="title" maxlength="100" required value="{{ task.title if task else '' }}" placeholder="例如：每日活动提醒"></label>
         <label class="field"><span>目标群组</span><select name="chat_id" required><option value="">选择群组</option>{% for chat in chats %}<option value="{{ chat.id }}" {% if task and task.chat_id == chat.id %}selected{% endif %}>{{ chat.title }}</option>{% endfor %}</select></label>
-        <label class="field"><span>文字内容 <small>支持 Telegram HTML 格式</small></span><textarea name="text" id="message-text" rows="7" placeholder="输入发送内容…">{{ task.text if task else '' }}</textarea></label>
+        <label class="field"><span>文字内容 <small id="text-limit">最多 4096 字符</small></span><textarea name="text" id="message-text" rows="7" maxlength="4096" placeholder="输入发送内容…">{{ task.text if task else '' }}</textarea></label>
+        <label class="field"><span>文字格式</span><select name="parse_mode"><option value="plain" {% if not task or task.schedule_config.get('parse_mode', 'plain') == 'plain' %}selected{% endif %}>纯文本（推荐，特殊符号不会报错）</option><option value="html" {% if task and task.schedule_config.get('parse_mode') == 'html' %}selected{% endif %}>Telegram HTML（高级）</option></select></label>
         <div class="field"><span>图片或视频</span>
           <label class="upload-zone" id="upload-zone"><input type="file" id="media-upload" accept="image/*,video/*"><span class="upload-icon">⇧</span><b>上传到公开素材频道</b><small>支持图片和视频，最大 50MB</small></label>
           <div class="upload-progress" id="upload-progress" hidden><span></span><b>正在上传到 Telegram…</b></div>
@@ -55,4 +56,3 @@
   </form>
 </main>
 {% endblock %}
-

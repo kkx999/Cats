@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     superadmin_ids_raw: str = Field(default="", validation_alias="SUPERADMIN_IDS")
 
     database_url: str = "postgresql+asyncpg://cats:cats@postgres:5432/cats"
-    redis_url: str = "redis://redis:6379/0"
     app_secret: str = "development-only-change-me"
     login_code_pepper: str = "development-pepper"
 
