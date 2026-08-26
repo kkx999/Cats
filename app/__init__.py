@@ -1,1 +1,0 @@
-"""Cats Telegram scheduler."""
