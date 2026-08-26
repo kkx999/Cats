@@ -44,16 +44,25 @@
 
 ## 首次部署
 
-在全新 Debian 12 上使用仓库自带安装脚本。脚本会配置 Docker 官方软件源、安装 Docker Compose Plugin、在服务器本地生成随机密钥并启动服务：
+全新 Debian 12 只需执行一条命令：
 
 ```bash
-apt update && apt install -y git
-git clone https://github.com/kkx999/Cats.git /opt/miaobot
-cd /opt/miaobot
-bash deploy/install.sh
+apt-get update && apt-get install -y curl && bash <(curl -fsSL https://raw.githubusercontent.com/kkx999/Cats/main/install.sh)
 ```
 
-安装过程会在 SSH 终端中询问域名、Bot Token、管理员 ID 和公开素材频道；Bot Token 输入时不会显示。脚本不会修改 SSH 登录方式。
+安装只询问四项：超级管理员数字 ID、Bot Token、后台域名、公开素材频道。机器人用户名、频道 ID、频道用户名、数据库密码和系统密钥全部自动获取或生成。
+
+素材频道支持以下写法：
+
+- `@channel_name`
+- `channel_name`
+- `https://t.me/channel_name`
+- `https://t.me/channel_name/123`（频道消息链接）
+- `https://t.me/s/channel_name/123`
+- `tg://resolve?domain=channel_name`
+- `-1001234567890`
+
+脚本会在安装前自动验证 Bot Token、频道是否公开，以及机器人是否拥有频道“发布消息”权限。私密邀请链接不支持，因为本项目明确使用公开素材频道。脚本不会修改 SSH 登录方式。
 
 `.env` 中必须填写：
 
