@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}登录 · 喵Bot{% endblock %}
+{% block body %}
+<main class="auth-shell">
+  <section class="auth-card">
+    <a class="brand centered" href="/"><span class="brand-mark">喵</span><span>喵Bot</span></a>
+    <div class="auth-heading">
+      <span class="step-tag">Telegram 安全验证</span>
+      <h1>发送验证码，进入后台</h1>
+      <p>将下面的六位数字发送给喵Bot。本页面验证成功后会自动跳转。</p>
+    </div>
+    <button class="code-box" type="button" data-copy="{{ code }}" aria-label="复制验证码">
+      <span id="login-code">{{ code[:3] }} {{ code[3:] }}</span>
+      <small>点击复制</small>
+    </button>
+    <a class="btn btn-primary btn-block" href="https://t.me/{{ bot_username }}" target="_blank">打开 Telegram 机器人</a>
+    <div class="auth-status" id="auth-status"><span class="spinner"></span><span>等待机器人验证</span><b id="countdown">05:00</b></div>
+    <p class="security-note">验证码和登录链接均在 5 分钟后失效。验证成功后，链接在剩余有效期内可重复使用。</p>
+  </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const expires = {{ expires_seconds }};
+  const started = Date.now();
+  const status = document.querySelector('#auth-status span:nth-child(2)');
+  const counter = document.querySelector('#countdown');
+  const timer = setInterval(() => {
+    const left = Math.max(0, expires - Math.floor((Date.now() - started) / 1000));
+    counter.textContent = `${String(Math.floor(left / 60)).padStart(2,'0')}:${String(left % 60).padStart(2,'0')}`;
+    if (!left) { clearInterval(timer); status.textContent = '验证码已过期，请刷新页面'; }
+  }, 1000);
+  const poll = setInterval(async () => {
+    const response = await fetch('/api/auth/status/{{ challenge.id }}');
+    const data = await response.json();
+    if (data.status === 'confirmed') {
+      clearInterval(poll); status.textContent = '验证成功，正在进入后台…'; window.location.href = data.url;
+    }
+    if (data.status === 'expired') clearInterval(poll);
+  }, 1200);
+});
+</script>
+{% endblock %}

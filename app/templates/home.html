@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}喵Bot · Telegram 定时发送{% endblock %}
+{% block body %}
+<main class="landing">
+  <nav class="landing-nav">
+    <a class="brand" href="/"><span class="brand-mark">喵</span><span>喵Bot</span></a>
+    <a class="btn btn-secondary" href="/login">进入后台</a>
+  </nav>
+  <section class="hero">
+    <div class="eyebrow"><span class="pulse"></span> Telegram 群组定时发送</div>
+    <h1>把每一次发布，<br><span>安排得刚刚好。</span></h1>
+    <p>文字、图片、视频和多行按钮，在一个清晰的流程中完成。任务持久保存，服务重启后继续运行。</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary btn-large" href="/login">开始使用</a>
+      <span class="quiet">通过 Telegram 安全验证登录</span>
+    </div>
+  </section>
+  <section class="feature-grid">
+    <article class="glass-card"><span class="feature-icon">◷</span><h3>灵活周期</h3><p>单次、每天、每周、每月和自定义间隔。</p></article>
+    <article class="glass-card"><span class="feature-icon">▧</span><h3>完整内容</h3><p>支持媒体、富文本、多行链接按钮与实时预览。</p></article>
+    <article class="glass-card"><span class="feature-icon">↻</span><h3>可靠执行</h3><p>失败自动重试，重启不丢任务，防止重复发送。</p></article>
+  </section>
+</main>
+{% endblock %}
+

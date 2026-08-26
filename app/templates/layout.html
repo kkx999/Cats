@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/dashboard"><span class="brand-mark">喵</span><span>喵Bot</span></a>
+    <nav class="side-nav">
+      <a class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard"><span>▦</span>定时任务</a>
+      <a class="nav-item {% if request.url.path.startswith('/tasks/') %}active{% endif %}" href="/tasks/new"><span>＋</span>新建发送</a>
+      {% if user and is_superadmin(user.id) %}<a class="nav-item {% if request.url.path == '/superadmin' %}active{% endif %}" href="/superadmin"><span>◇</span>超级后台</a>{% endif %}
+    </nav>
+    <div class="side-help">
+      <strong>需要绑定新群？</strong>
+      <p>把喵Bot添加为管理员，然后在群内发送 <code>/connect</code>。</p>
+    </div>
+    <div class="user-chip">
+      <span class="avatar">{{ (user.display_name or '喵')[0] }}</span>
+      <span><b>{{ user.display_name }}</b><small>ID {{ user.id }}</small></span>
+      <a href="/logout" title="退出">↗</a>
+    </div>
+  </aside>
+  <div class="app-main">
+    <header class="mobile-header"><button class="icon-btn" data-sidebar>☰</button><a class="brand" href="/dashboard"><span class="brand-mark">喵</span><span>喵Bot</span></a></header>
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
+
